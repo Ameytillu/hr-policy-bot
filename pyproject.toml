@@ -1,0 +1,9 @@
+[project]
+name = "smarthr-copilot"
+version = "0.1.0"
+description = "RAG-based HR policy assistant (Streamlit + PostgreSQL)"
+requires-python = ">=3.10"
+dependencies = []
+
+[tool.ruff]
+line-length = 100
