@@ -1,18 +1,10 @@
-# SmartHR Copilot (Streamlit + PostgreSQL)
+### SmartHR Copilot (Streamlit + OpenAI API)
 
-An AI-powered RAG chatbot that answers HR policy questions with citations and personalization. I am working on its development, planning to include more smart features which will help employees apply for leave, check for leave balance without need of emailing HR. 
+SmartHR Copilot is an AI-powered HR assistant built with Streamlit that uses Retrieval-Augmented Generation (RAG) and the OpenAI API to answer company HR policy questions with accuracy, citations, and a personal touch.
 
-## Quickstart
-```bash
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env  # add your OPENAI_API_KEY + DATABASE_URL
-streamlit run src/app/main.py
-```
+It’s designed to make internal HR communication effortless — helping employees instantly check policies, understand benefits, or get leave-related answers without emailing HR.
+The project is evolving to include features like checking leave balances, applying for leave, and accessing personalized HR data through natural conversations.
 
-### Secrets
-- Local: put keys in `.env` (never commit).
-- Streamlit Cloud: use **App → Settings → Secrets**. See `streamlit.secrets.example.toml`.
+Dataset used- A custom synthetic policy dataset is used for RAG. 
 
-### Structure
-See `src/` packages for UI (`app`), retrieval (`retrieval`), LLM calls (`llm`), and storage (`storage`).
+
