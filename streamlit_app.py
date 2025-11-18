@@ -41,19 +41,28 @@ st.markdown("""
     .custom-title {
         font-size: 3rem;
         font-weight: 700;
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        background-clip: text;
+        color: white !important;
         text-align: center;
         margin-bottom: 0.5rem;
+        text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
     }
     
     .custom-subtitle {
         text-align: center;
-        color: #666;
+        color: white !important;
         font-size: 1.1rem;
         margin-bottom: 2rem;
+        text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.2);
+    }
+    
+    /* Make all form labels visible */
+    label, .stMarkdown, h3, h4 {
+        color: #2c3e50 !important;
+    }
+    
+    /* Ensure text in main content area is visible */
+    .element-container {
+        color: #2c3e50 !important;
     }
     
     /* Input field styling */
@@ -92,15 +101,23 @@ st.markdown("""
     /* Radio button styling */
     .stRadio > label {
         font-weight: 600;
-        color: #333;
+        color: #2c3e50 !important;
         font-size: 1rem;
     }
     
     .stRadio > div {
-        background: #f8f9fa;
+        background: white;
         padding: 15px;
         border-radius: 12px;
         border: 2px solid #e0e0e0;
+    }
+    
+    .stRadio > div > label {
+        color: #2c3e50 !important;
+    }
+    
+    .stRadio > div > label > div {
+        color: #2c3e50 !important;
     }
     
     /* Answer box styling */
@@ -171,14 +188,14 @@ col1, col2, col3 = st.columns([1, 6, 1])
 with col2:
     # ---- Q&A form ----
     with st.form("qa", clear_on_submit=False):
-        st.markdown("### 💬 Ask Your Question")
+        st.markdown('<h3 style="color: #2c3e50 !important;">💬 Ask Your Question</h3>', unsafe_allow_html=True)
         q = st.text_input(
             "Type your HR policy question here...",
             placeholder="e.g., What is the PTO carryover rule?",
             label_visibility="collapsed"
         )
         
-        st.markdown("### 🎨 Response Style")
+        st.markdown('<h3 style="color: #2c3e50 !important;">🎨 Response Style</h3>', unsafe_allow_html=True)
         style_label = st.radio(
             "Choose your preferred answer format:",
             ["Bullets", "Paragraph (no-LLM)", "LLM (OpenAI)"],
