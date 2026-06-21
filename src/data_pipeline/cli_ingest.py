@@ -1,54 +1,107 @@
-import argparse, os, json, re, hashlib
+import argparse
+import hashlib
+import json
+import re
+from pathlib import Path
+from typing import Iterator, Tuple
 
-def clean_text(t: str) -> str:
-    t = re.sub(r'\s+', ' ', t).strip()
-    return t
+HEADING_RE = re.compile(r"^#{1,6}\s+(.+?)\s*$", re.MULTILINE)
+LINK_RE = re.compile(r"\[([^]]+)]\([^)]+\)")
 
-def markdown_to_text(md_content: str) -> str:
-    # remove markdown headings, bullets, symbols
-    text = re.sub(r'[#*_`>-]', ' ', md_content)
-    text = re.sub(r'\[.*?\]\(.*?\)', '', text)  # remove links
-    return clean_text(text)
 
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--in", dest="inp", required=True, help="Input folder with raw markdown policies")
-    parser.add_argument("--out", dest="out", required=True, help="Output folder for processed JSONL")
-    args = parser.parse_args()
+def clean_text(text: str) -> str:
+    text = LINK_RE.sub(r"\1", text)
+    text = re.sub(r"^\s*[-*+]\s+", "", text, flags=re.MULTILINE)
+    text = re.sub(r"[`*_]", "", text)
+    return re.sub(r"\s+", " ", text).strip()
 
-    os.makedirs(args.out, exist_ok=True)
-    out_path = os.path.join(args.out, "corpus.jsonl")
 
-    n = 0
-    with open(out_path, "w", encoding="utf-8") as out:
-        for fn in os.listdir(args.inp):
-            if not fn.lower().endswith(".md"):
+def iter_sections(content: str, fallback_title: str) -> Iterator[Tuple[str, str]]:
+    """Yield Markdown sections while retaining heading names as retrieval metadata."""
+    matches = list(HEADING_RE.finditer(content))
+    if not matches:
+        text = clean_text(content)
+        if text:
+            yield fallback_title, text
+        return
+
+    preamble = clean_text(content[: matches[0].start()])
+    if preamble:
+        yield fallback_title, preamble
+    for index, match in enumerate(matches):
+        end = matches[index + 1].start() if index + 1 < len(matches) else len(content)
+        section_text = clean_text(content[match.end() : end])
+        if section_text:
+            yield clean_text(match.group(1)), section_text
+
+
+def chunk_text(text: str, max_chars: int = 900) -> Iterator[str]:
+    """Create sentence-aware chunks without splitting words or policy clauses unnecessarily."""
+    sentences = re.split(r"(?<=[.!?])\s+", text)
+    current = ""
+    for sentence in sentences:
+        sentence = sentence.strip()
+        if not sentence:
+            continue
+        if current and len(current) + len(sentence) + 1 > max_chars:
+            yield current
+            current = ""
+        while len(sentence) > max_chars:
+            split_at = sentence.rfind(" ", 0, max_chars)
+            split_at = split_at if split_at > 0 else max_chars
+            if current:
+                yield current
+                current = ""
+            yield sentence[:split_at].strip()
+            sentence = sentence[split_at:].strip()
+        current = f"{current} {sentence}".strip()
+    if current:
+        yield current
+
+
+def ingest(input_dir: Path, output_dir: Path, region: str, effective_from: str) -> int:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    output_path = output_dir / "corpus.jsonl"
+    count = 0
+    with output_path.open("w", encoding="utf-8") as output:
+        for path in sorted(input_dir.iterdir()):
+            if path.suffix.lower() not in {".md", ".txt"}:
                 continue
+            policy_id = path.stem
+            content = path.read_text(encoding="utf-8", errors="replace")
+            for section_number, (section_title, section_text) in enumerate(
+                iter_sections(content, policy_id.replace("_", " ").title())
+            ):
+                for chunk_number, chunk in enumerate(chunk_text(section_text)):
+                    if len(chunk) < 40:
+                        continue
+                    section_id = f"sec-{section_number:02d}-{chunk_number:02d}"
+                    record = {
+                        "id": hashlib.sha256(
+                            f"{policy_id}:{section_title}:{chunk_number}:{chunk}".encode("utf-8")
+                        ).hexdigest(),
+                        "policy_id": policy_id,
+                        "section": section_title,
+                        "text": chunk,
+                        "region": region,
+                        "effective_from": effective_from,
+                        "source": f"file://{path.name}#{section_id}",
+                    }
+                    output.write(json.dumps(record, ensure_ascii=False) + "\n")
+                    count += 1
+    return count
 
-            policy_id = os.path.splitext(fn)[0]
-            with open(os.path.join(args.inp, fn), "r", encoding="utf-8", errors="ignore") as f:
-                text = f.read()
 
-            text = markdown_to_text(text)
-            # split into ~500-character chunks (safe for embeddings)
-            chunks = re.findall(r'.{1,500}(?:\s+|$)', text)
+def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--in", dest="inp", required=True, help="Input folder with policy files")
+    parser.add_argument("--out", required=True, help="Output folder for processed JSONL")
+    parser.add_argument("--region", default="GLOBAL")
+    parser.add_argument("--effective-from", default="2025-01-01")
+    args = parser.parse_args()
+    count = ingest(Path(args.inp), Path(args.out), args.region, args.effective_from)
+    print(f"Processed {count} chunks into {Path(args.out) / 'corpus.jsonl'}")
 
-            for i, chunk in enumerate(chunks):
-                chunk = clean_text(chunk)
-                if len(chunk) < 60:
-                    continue
-                rec = {
-                    "id": hashlib.md5(f"{policy_id}-{i}".encode()).hexdigest(),
-                    "policy_id": policy_id,
-                    "section": f"sec-{i:02d}",
-                    "text": chunk,
-                    "region": "GLOBAL",
-                    "effective_from": "2025-01-01",
-                    "source": f"file://{fn}#sec-{i:02d}"
-                }
-                out.write(json.dumps(rec, ensure_ascii=False) + "\n")
-                n += 1
-    print(f"Processed {n} chunks from Markdown policies into {out_path}")
 
 if __name__ == "__main__":
     main()

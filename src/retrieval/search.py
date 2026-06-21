@@ -1,71 +1,103 @@
-from typing import List, Dict, Tuple
+import logging
+import re
 from functools import lru_cache
-import os, numpy as np, json
+from typing import Dict, List, Tuple
+
+import numpy as np
 from rank_bm25 import BM25Okapi
-from pathlib import Path
 
-from src.retrieval.index_faiss import load_index
+from src.core.config import settings
 from src.retrieval.embeddings import embed_query
+from src.retrieval.index_faiss import load_index
 
-TOP_K = int(os.getenv("TOP_K", "6"))
-USE_DENSE = os.getenv("USE_DENSE", "1") == "1"  # set USE_DENSE=0 to force BM25-only
+logger = logging.getLogger(__name__)
+TOKEN_RE = re.compile(r"[a-z0-9]+(?:['-][a-z0-9]+)?")
+
+
+def _tokenize(text: str) -> List[str]:
+    return TOKEN_RE.findall((text or "").lower())
+
 
 @lru_cache(maxsize=1)
 def _load_meta_corpus() -> Tuple[np.ndarray, List[Dict], BM25Okapi]:
-    V, meta = load_index()               # V shape could be (N,1) if zeros
-    tokenized = [m["text"].lower().split() for m in meta]
-    bm25 = BM25Okapi(tokenized)
-    return V, meta, bm25
+    vectors, meta = load_index()
+    if len(vectors) != len(meta):
+        raise ValueError("Index is corrupt: vector and metadata counts differ")
+    bm25 = BM25Okapi([_tokenize(item["text"]) for item in meta])
+    return vectors, meta, bm25
+
+
+def clear_search_cache() -> None:
+    """Reload index files after rebuilding them in a long-running process."""
+    _load_meta_corpus.cache_clear()
+
 
 def _normalize(arr: np.ndarray) -> np.ndarray:
     arr = np.asarray(arr, dtype=np.float32)
     if arr.size == 0:
         return arr
-    mn, mx = float(arr.min()), float(arr.max())
-    if mx - mn < 1e-9:
-        return np.zeros_like(arr)
-    return (arr - mn) / (mx - mn)
+    minimum, maximum = float(arr.min()), float(arr.max())
+    if maximum - minimum < 1e-9:
+        return np.ones_like(arr) if maximum > 0 else np.zeros_like(arr)
+    return (arr - minimum) / (maximum - minimum)
+
 
 def hybrid_search(query: str) -> List[Dict]:
-    V, meta, bm25 = _load_meta_corpus()
+    query_tokens = _tokenize(query)
+    if not query_tokens:
+        return []
 
-    # ----- Dense (guarded) -----
-    dense_idxs, dnorm = np.array([], dtype=int), np.array([], dtype=np.float32)
-    if USE_DENSE and V.size > 0:
+    vectors, meta, bm25 = _load_meta_corpus()
+    top_k = settings.TOP_K
+
+    dense_idxs = np.array([], dtype=int)
+    dense_normalized = np.array([], dtype=np.float32)
+    if settings.USE_DENSE and vectors.size:
         try:
-            qv = embed_query(query).astype("float32")
-            if qv.ndim == 1 and V.shape[1] == qv.shape[0] and V.shape[1] > 1:
-                qv /= (np.linalg.norm(qv) + 1e-12)
-                dense_scores_all = V @ qv  # (N,)
-                dense_idxs = np.argsort(dense_scores_all)[::-1][:TOP_K]
-                dnorm = _normalize(dense_scores_all[dense_idxs])
-        except Exception as e:
-            # Dense disabled silently; BM25 will still work.
-            dense_idxs, dnorm = np.array([], dtype=int), np.array([], dtype=np.float32)
+            query_vector = embed_query(query).astype("float32")
+            if vectors.ndim != 2 or query_vector.ndim != 1 or vectors.shape[1] != query_vector.shape[0]:
+                raise ValueError(
+                    f"Index dimension {vectors.shape} does not match query dimension {query_vector.shape}"
+                )
+            query_vector /= np.linalg.norm(query_vector) + 1e-12
+            dense_scores = vectors @ query_vector
+            dense_idxs = np.argsort(dense_scores)[::-1][:top_k]
+            dense_normalized = _normalize(dense_scores[dense_idxs])
+        except Exception as exc:
+            logger.warning("Dense retrieval unavailable; using BM25 only: %s", exc)
 
-    # ----- BM25 -----
-    bm25_scores_all = bm25.get_scores(query.lower().split())
-    bm25_top = np.argsort(bm25_scores_all)[::-1][:TOP_K]
-    bnorm = _normalize(bm25_scores_all[bm25_top])
+    bm25_scores = bm25.get_scores(query_tokens)
+    positive_bm25 = np.flatnonzero(bm25_scores > 0)
+    bm25_idxs = positive_bm25[np.argsort(bm25_scores[positive_bm25])[::-1]][:top_k]
+    bm25_normalized = _normalize(bm25_scores[bm25_idxs])
 
-    # ----- Fusion -----
-    cand = set(dense_idxs.tolist()) | set(bm25_top.tolist())
-    dense_pos = {idx: i for i, idx in enumerate(dense_idxs)}
-    bm25_pos = {idx: i for i, idx in enumerate(bm25_top)}
-
+    candidates = set(dense_idxs.tolist()) | set(bm25_idxs.tolist())
+    dense_positions = {idx: pos for pos, idx in enumerate(dense_idxs)}
+    bm25_positions = {idx: pos for pos, idx in enumerate(bm25_idxs)}
     results = []
-    for idx in cand:
-        d = float(dnorm[dense_pos[idx]]) if idx in dense_pos else 0.0
-        b = float(bnorm[bm25_pos[idx]]) if idx in bm25_pos else 0.0
-        score = (0.6 * d + 0.4 * b) if dnorm.size else b  # BM25-only if dense off
-        m = meta[idx]
-        results.append({
-            "text": m["text"],
-            "source": m.get("source", f"policy://{m.get('policy_id','unknown')}/{m.get('section','')}"),
-            "score": score,
-            "policy_id": m.get("policy_id"),
-            "section": m.get("section"),
-            "effective_from": m.get("effective_from"),
-        })
-    results.sort(key=lambda x: x["score"], reverse=True)
-    return results[:TOP_K]
+
+    for idx in candidates:
+        dense_score = (
+            float(dense_normalized[dense_positions[idx]]) if idx in dense_positions else 0.0
+        )
+        bm25_score = (
+            float(bm25_normalized[bm25_positions[idx]]) if idx in bm25_positions else 0.0
+        )
+        score = 0.6 * dense_score + 0.4 * bm25_score if dense_normalized.size else bm25_score
+        if score < settings.MIN_RELEVANCE_SCORE:
+            continue
+        item = meta[idx]
+        results.append(
+            {
+                "text": item["text"],
+                "source": item.get(
+                    "source", f"policy://{item.get('policy_id', 'unknown')}/{item.get('section', '')}"
+                ),
+                "score": score,
+                "policy_id": item.get("policy_id"),
+                "section": item.get("section"),
+                "effective_from": item.get("effective_from"),
+            }
+        )
+
+    return sorted(results, key=lambda item: item["score"], reverse=True)[:top_k]
