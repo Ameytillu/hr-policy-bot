@@ -18,12 +18,19 @@ def _tokenize(text: str) -> List[str]:
     return TOKEN_RE.findall((text or "").lower())
 
 
+def _searchable_text(item: Dict) -> str:
+    """Include policy and section names so direct policy questions rank reliably."""
+    policy_name = str(item.get("policy_id", "")).replace("_", " ")
+    section_name = str(item.get("section", "")).replace("_", " ")
+    return f"{policy_name} {section_name} {item.get('text', '')}"
+
+
 @lru_cache(maxsize=1)
 def _load_meta_corpus() -> Tuple[np.ndarray, List[Dict], BM25Okapi]:
     vectors, meta = load_index()
     if len(vectors) != len(meta):
         raise ValueError("Index is corrupt: vector and metadata counts differ")
-    bm25 = BM25Okapi([_tokenize(item["text"]) for item in meta])
+    bm25 = BM25Okapi([_tokenize(_searchable_text(item)) for item in meta])
     return vectors, meta, bm25
 
 
