@@ -40,7 +40,7 @@ def test_ingest_supports_text_files(tmp_path: Path):
 
 def test_offline_answer_needs_retrieval_evidence():
     answer = generate_answer("unrelated question", [])
-    assert "couldn't find a matching policy" in answer
+    assert "couldn't find reliable information" in answer
 
 
 def test_tokenizer_removes_punctuation():
@@ -96,3 +96,19 @@ def test_every_indexed_policy_is_retrievable_by_name(monkeypatch):
         hits = hybrid_search(f"What is the {policy_name}?")
         assert hits, policy_id
         assert hits[0]["policy_id"] == policy_id, policy_id
+
+
+def test_answer_is_detailed_readable_and_focused(monkeypatch):
+    monkeypatch.setattr(settings, "USE_DENSE", False)
+    clear_search_cache()
+    hits = hybrid_search("What is the dress code?")
+    answer = generate_answer("What is the dress code?", hits, style="bullets")
+
+    assert answer.startswith("## Dress Code Policy")
+    assert "### Overview" in answer
+    assert "### Key policy details" in answer
+    assert "### Policy sources" in answer
+    assert "synthetic document" not in answer.lower()
+    assert "[Company Name]" not in answer
+    assert "Social Media Policy" not in answer
+    assert answer.count("\n- ") >= 3

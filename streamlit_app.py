@@ -1,16 +1,17 @@
 # app_lite.py — minimal, stable Streamlit UI
 
 # ---- path shim (so `src/...` imports work) ----
-import sys, pathlib
+import pathlib
+import sys
 ROOT = pathlib.Path(__file__).resolve().parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 # ---- imports ----
-import streamlit as st
-from src.retrieval.search import hybrid_search
-from src.llm.generator import generate_answer
-from src.core.config import settings
+import streamlit as st  # noqa: E402
+from src.core.config import settings  # noqa: E402
+from src.llm.generator import generate_answer  # noqa: E402
+from src.retrieval.search import hybrid_search  # noqa: E402
 
 # ---- page config ----
 st.set_page_config(
@@ -339,14 +340,12 @@ with col2:
                 hits = hybrid_search(q.strip())
                 st.session_state["last_hits"] = hits
                 
-                # Display answer in a styled box
+                # Render Markdown natively inside a bordered response card.
                 st.markdown("---")
                 st.markdown('<h3 class="section-heading">✨ Answer</h3>', unsafe_allow_html=True)
                 answer = generate_answer(q, hits, style=style)
-                st.markdown(answer)
-                
-                # Success message
-                st.success("✅ Answer generated successfully!")
+                with st.container(border=True):
+                    st.markdown(answer)
                 
             except Exception as e:
                 st.error("❌ Error while answering:")
