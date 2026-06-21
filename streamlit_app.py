@@ -10,6 +10,7 @@ if str(ROOT) not in sys.path:
 import streamlit as st
 from src.retrieval.search import hybrid_search
 from src.llm.generator import generate_answer
+from src.core.config import settings
 
 # ---- page config ----
 st.set_page_config(
@@ -313,9 +314,12 @@ with col2:
         )
         
         st.markdown('<h3 class="section-heading">🎨 Response Style</h3>', unsafe_allow_html=True)
+        response_styles = ["📝 Bullets", "📄 Paragraph (offline)"]
+        if settings.USE_LLM and settings.OPENAI_API_KEY:
+            response_styles.append("🤖 LLM (OpenAI)")
         style_label = st.radio(
             "Choose your preferred answer format:",
-            ["📝 Bullets", "📄 Paragraph (no-LLM)", "🤖 LLM (OpenAI)"],
+            response_styles,
             index=1,
             horizontal=True,
             label_visibility="collapsed"
@@ -323,7 +327,11 @@ with col2:
         
         submitted = st.form_submit_button("🔍 Get Answer", use_container_width=True)
 
-    style = {"📝 Bullets": "bullets", "📄 Paragraph (no-LLM)": "paragraph", "🤖 LLM (OpenAI)": "llm"}[style_label]
+    style = {
+        "📝 Bullets": "bullets",
+        "📄 Paragraph (offline)": "paragraph",
+        "🤖 LLM (OpenAI)": "llm",
+    }[style_label]
 
     if submitted and q.strip():
         with st.spinner('🔍 Searching and generating answer...'):
@@ -335,7 +343,7 @@ with col2:
                 st.markdown("---")
                 st.markdown('<h3 class="section-heading">✨ Answer</h3>', unsafe_allow_html=True)
                 answer = generate_answer(q, hits, style=style)
-                st.markdown(f'<div class="answer-box">{answer}</div>', unsafe_allow_html=True)
+                st.markdown(answer)
                 
                 # Success message
                 st.success("✅ Answer generated successfully!")
@@ -355,17 +363,12 @@ with col2:
                 if len(snippet) > 500:
                     snippet = snippet[:500] + "…"
                 
-                # Create styled snippet cards
-                st.markdown(f"""
-                <div class="snippet-card">
-                    <h4>📄 {i}. {h.get('source', 'Unknown Source')}</h4>
-                    <p style="color: #666; font-size: 0.9rem;">
-                        <strong>Relevance Score:</strong> <code>{h.get('score', 0):.2f}</code> • 
-                        <strong>Effective From:</strong> <code>{h.get('effective_from', 'n/a')}</code>
-                    </p>
-                    <p style="margin-top: 1rem; line-height: 1.6;">{snippet}</p>
-                </div>
-                """, unsafe_allow_html=True)
+                st.markdown(f"#### 📄 {i}. {h.get('source', 'Unknown Source')}")
+                st.caption(
+                    f"Relevance: {h.get('score', 0):.2f} · "
+                    f"Effective from: {h.get('effective_from', 'n/a')}"
+                )
+                st.write(snippet)
 
 # ---- Feature badges below hero ----
 st.markdown("""

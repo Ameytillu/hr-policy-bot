@@ -3,7 +3,23 @@ name = "smarthr-copilot"
 version = "0.1.0"
 description = "RAG-based HR policy assistant (Streamlit + PostgreSQL)"
 requires-python = ">=3.10"
-dependencies = []
+dependencies = [
+    "streamlit>=1.38.0",
+    "python-dotenv>=1.0.1",
+    "pydantic>=2.7.0",
+    "rank-bm25>=0.2.2",
+    "numpy>=1.26.0",
+    "sentence-transformers>=3.0.0",
+    "SQLAlchemy>=2.0.30",
+]
+
+[project.optional-dependencies]
+openai = ["openai>=1.51.0"]
+postgres = ["psycopg2-binary>=2.9.9"]
+dev = ["pytest>=8.2.0", "ruff>=0.5.0"]
 
 [tool.ruff]
 line-length = 100
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -1,19 +1,18 @@
 # ---------------------- PATH SHIM (must be first!) ----------------------
 # Ensures "src/..." imports work when running `streamlit run src/app/main.py`
-import sys, pathlib
+import pathlib
+import sys
 ROOT = pathlib.Path(__file__).resolve().parents[2]  # project root (folder with README.md)
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 # -----------------------------------------------------------------------
 
-import os
-import textwrap
-import streamlit as st
+import streamlit as st  # noqa: E402
 
 # Local modules (now resolvable thanks to the shim above)
-from src.core.config import settings
-from src.retrieval.search import hybrid_search
-from src.llm.generator import generate_answer
+from src.core.config import settings  # noqa: E402
+from src.llm.generator import generate_answer  # noqa: E402
+from src.retrieval.search import hybrid_search  # noqa: E402
 
 
 # ---------------------------- Helpers -----------------------------------
@@ -65,7 +64,7 @@ with st.sidebar:
     if st.button("🧹 Clear chat"):
         st.session_state.pop("history", None)
         st.session_state.pop("last_hits", None)
-        st.experimental_rerun()
+        st.rerun()
 
 st.caption("Ask about your HR policies. The bot answers from retrieved snippets with citations.")
 

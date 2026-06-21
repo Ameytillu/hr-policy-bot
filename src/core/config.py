@@ -27,13 +27,14 @@ def getenv(key: str, default: Optional[str] = None) -> Optional[str]:
 
 class Settings(BaseModel):
     OPENAI_API_KEY: Optional[str] = getenv("OPENAI_API_KEY")
-    EMBEDDINGS_PROVIDER: str = getenv("EMBEDDINGS_PROVIDER", "openai")
-    EMBEDDINGS_MODEL: str = getenv("EMBEDDINGS_MODEL", "text-embedding-3-small")
+    EMBEDDINGS_PROVIDER: str = getenv("EMBEDDINGS_PROVIDER", "st")
+    EMBEDDINGS_MODEL: str = getenv("EMBEDDINGS_MODEL", "all-MiniLM-L6-v2")
     GEN_MODEL: str = getenv("GEN_MODEL", "gpt-4o-mini")
     ST_MODEL: str = getenv("ST_MODEL", "all-MiniLM-L6-v2")
     USE_LLM: bool = str(getenv("USE_LLM", "false")).lower() == "true"
-    USE_DENSE: bool = str(getenv("USE_DENSE", "1")).strip() == "1"
+    USE_DENSE: bool = str(getenv("USE_DENSE", "false")).lower() in {"1", "true", "yes"}
     TOP_K: int = int(getenv("TOP_K", "6"))
+    MIN_RELEVANCE_SCORE: float = float(getenv("MIN_RELEVANCE_SCORE", "0.05"))
     DATABASE_URL: Optional[str] = getenv("DATABASE_URL")
 
 settings = Settings()

@@ -1,10 +1,8 @@
 # src/llm/generator.py
-import os, re
+import re
 from typing import List, Dict
 from textwrap import shorten
-from dotenv import load_dotenv
-
-load_dotenv()
+from src.core.config import settings
 
 def _sources_numbered(hits: List[Dict]) -> str:
     lines = []
@@ -19,33 +17,36 @@ def _sentences(text: str) -> List[str]:
 
 def _paragraph_no_llm(hits: List[Dict], max_sents: int = 5) -> str:
     pool = []
-    for h in hits[:5]:
-        pool.extend(_sentences(h.get("text", "")))
+    for source_number, hit in enumerate(hits[:5], 1):
+        pool.extend((sentence, source_number) for sentence in _sentences(hit.get("text", "")))
     # keep the first informative, dedupe by lowercase
     out, seen = [], set()
-    for s in pool:
-        k = s.lower()
+    for sentence, source_number in pool:
+        k = sentence.lower()
         if k in seen: 
             continue
         seen.add(k)
-        out.append(s)
+        out.append(f"{sentence} [{source_number}]")
         if len(out) >= max_sents:
             break
     return " ".join(out) if out else "No clear policy sentences were found."
 
 def _bullets(hits: List[Dict], max_points: int = 5) -> str:
     points = []
-    for h in hits[:max_points]:
+    for source_number, h in enumerate(hits[:max_points], 1):
         t = (h.get("text") or "").strip()
         t = shorten(t, width=300, placeholder="…")
-        points.append(f"- {t}" if t else "- (empty snippet)")
+        points.append(f"- {t} [{source_number}]" if t else "- (empty snippet)")
     return "\n".join(points) if points else "- _No clear snippets found._"
 
 def _paragraph_llm_openai(query: str, hits: List[Dict]) -> str:
     """Compose a short grounded paragraph with bracketed citations using OpenAI."""
     from openai import OpenAI
-    client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-    model = os.getenv("GEN_MODEL", "gpt-4o-mini")
+    if not settings.USE_LLM:
+        raise RuntimeError("LLM generation is disabled")
+    if not settings.OPENAI_API_KEY:
+        raise RuntimeError("OPENAI_API_KEY is not configured")
+    client = OpenAI(api_key=settings.OPENAI_API_KEY)
     chunks = [h.get("text","") for h in hits[:6]]
     sources = "\n".join([f"{i+1}) {c}" for i, c in enumerate(chunks)])
     prompt = (
@@ -55,7 +56,7 @@ def _paragraph_llm_openai(query: str, hits: List[Dict]) -> str:
         f"Question: {query}\n\nSnippets:\n{sources}"
     )
     resp = client.chat.completions.create(
-        model=model,
+        model=settings.GEN_MODEL,
         temperature=0.2,
         messages=[{"role":"user","content":prompt}]
     )
@@ -73,11 +74,13 @@ def generate_answer(query: str, hits: List[Dict], style: str = "bullets") -> str
 
     if style == "paragraph":
         body = _paragraph_no_llm(hits)
-    elif style == "llm":
+    elif style == "llm" and settings.USE_LLM:
         try:
             body = _paragraph_llm_openai(query, hits)
-        except Exception as e:
+        except Exception:
             body = _paragraph_no_llm(hits) + "\n\n_(LLM unavailable; falling back to snippet-based paragraph.)_"
+    elif style == "llm":
+        body = _paragraph_no_llm(hits) + "\n\n_(Offline mode: LLM generation is disabled.)_"
     else:
         body = _bullets(hits)
 
