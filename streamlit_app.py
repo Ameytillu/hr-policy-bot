@@ -182,6 +182,34 @@ st.markdown("""
         color: #e5e7eb;
         line-height: 1.8;
     }
+
+    /* Native bordered container used for generated answers */
+    [data-testid="stVerticalBlockBorderWrapper"] {
+        background: rgba(30, 41, 59, 0.92) !important;
+        border: 1px solid rgba(129, 140, 248, 0.45) !important;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28) !important;
+    }
+
+    [data-testid="stVerticalBlockBorderWrapper"] [data-testid="stMarkdownContainer"],
+    [data-testid="stVerticalBlockBorderWrapper"] [data-testid="stMarkdownContainer"] p,
+    [data-testid="stVerticalBlockBorderWrapper"] [data-testid="stMarkdownContainer"] li,
+    [data-testid="stVerticalBlockBorderWrapper"] [data-testid="stMarkdownContainer"] strong,
+    [data-testid="stVerticalBlockBorderWrapper"] [data-testid="stMarkdownContainer"] h1,
+    [data-testid="stVerticalBlockBorderWrapper"] [data-testid="stMarkdownContainer"] h2,
+    [data-testid="stVerticalBlockBorderWrapper"] [data-testid="stMarkdownContainer"] h3,
+    [data-testid="stVerticalBlockBorderWrapper"] [data-testid="stMarkdownContainer"] h4 {
+        color: #f8fafc !important;
+        opacity: 1 !important;
+    }
+
+    [data-testid="stVerticalBlockBorderWrapper"] [data-testid="stMarkdownContainer"] h2,
+    [data-testid="stVerticalBlockBorderWrapper"] [data-testid="stMarkdownContainer"] h3 {
+        color: #ffffff !important;
+    }
+
+    [data-testid="stVerticalBlockBorderWrapper"] [data-testid="stMarkdownContainer"] a {
+        color: #c4b5fd !important;
+    }
     
     /* Expander styling - Dark theme */
     .streamlit-expanderHeader {
